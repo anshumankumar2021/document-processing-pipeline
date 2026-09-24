@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Receipt Intake</title>
+<meta name="description" content="Intelligent document processing on 200 real scanned receipts: multi-pass OCR, learned field extraction, validation, and a human-review queue for anything the model isn't sure about.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23123b36'/%3E%3Cpath d='M10 7h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z' fill='%23f6f1e7'/%3E%3Cpath d='M13 12h6M13 15h6M13 18h4' stroke='%23123b36' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --page: #efece6; --paper: #fbfaf7; --paper-2: #f4f1ea; --sunk: #e7e3da; --receipt: #ffffff;
+  --ink: #1b1d1c; --ink-2: #4b4f4c; --muted: #777a75;
+  --line: #dcd7cc; --line-2: #c9c3b6;
+  --accent: #0f6b5f; --accent-2: #0b5449; --accent-ink: #fff; --accent-soft: rgba(15,107,95,.10);
+  --ok: #17803d; --ok-soft: rgba(23,128,61,.11);
+  --review: #b25e00; --review-soft: rgba(214,130,20,.15);
+  --bad: #b3261e; --bad-soft: rgba(179,38,30,.10);
+  --f-company: #6d28d9; --f-date: #0369a1; --f-address: #0f766e; --f-total: #c2410c;
+  --shadow: 0 1px 2px rgba(27,29,28,.05), 0 10px 28px rgba(27,29,28,.08);
+  --f-body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #121413; --paper: #1a1d1b; --paper-2: #202421; --sunk: #151816; --receipt: #f3f1ea;
+    --ink: #eceee9; --ink-2: #b9bdb6; --muted: #8b908a;
+    --line: #2c312d; --line-2: #3a403b;
+    --accent: #4fd1b9; --accent-2: #75dcc8; --accent-ink: #0b1f1b; --accent-soft: rgba(79,209,185,.13);
+    --ok: #5dd28a; --ok-soft: rgba(93,210,138,.13);
+    --review: #f5b454; --review-soft: rgba(245,180,84,.14);
+    --bad: #ff8a80; --bad-soft: rgba(255,138,128,.12);
+    --f-company: #a78bfa; --f-date: #38bdf8; --f-address: #2dd4bf; --f-total: #fb923c;
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #121413; --paper: #1a1d1b; --paper-2: #202421; --sunk: #151816; --receipt: #f3f1ea;
+  --ink: #eceee9; --ink-2: #b9bdb6; --muted: #8b908a;
+  --line: #2c312d; --line-2: #3a403b;
+  --accent: #4fd1b9; --accent-2: #75dcc8; --accent-ink: #0b1f1b; --accent-soft: rgba(79,209,185,.13);
+  --ok: #5dd28a; --ok-soft: rgba(93,210,138,.13);
+  --review: #f5b454; --review-soft: rgba(245,180,84,.14);
+  --bad: #ff8a80; --bad-soft: rgba(255,138,128,.12);
+  --f-company: #a78bfa; --f-date: #38bdf8; --f-address: #2dd4bf; --f-total: #fb923c;
+  --shadow: 0 1px 2px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.35);
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; overflow-anchor: none; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 var(--f-body); }
+a { color: var(--accent); text-underline-offset: 3px; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; }
+.mono { font-family: var(--f-mono); font-size: .86em; }
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+
+.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--page) 90%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; gap: 16px; height: 58px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.01em; text-decoration: none; color: var(--ink); white-space: nowrap; }
+.top nav { display: flex; gap: 2px; margin-left: auto; }
+.top nav a { color: var(--ink-2); text-decoration: none; font-size: 14.5px; padding: 6px 10px; border-radius: 8px; font-weight: 600; }
+.top nav a:hover { background: var(--sunk); color: var(--ink); }
+.icon-btn { width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--line); background: var(--paper); display: grid; place-items: center; cursor: pointer; color: var(--ink-2); flex: none; }
+@media (max-width: 720px) { .top nav a.hide-sm { display: none; } }
+@media (max-width: 440px) { .top nav a:not(.keep) { display: none; } }
+
+.hero { padding: 42px 0 24px; }
+.eyebrow { font: 600 12.5px/1 var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+h1 { font-size: clamp(30px, 4.8vw, 50px); line-height: 1.05; letter-spacing: -.035em; font-weight: 800; margin: 14px 0 14px; max-width: 20ch; }
+.lede { font-size: 17.5px; color: var(--ink-2); max-width: 66ch; margin: 0; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 26px; }
+.stat { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.stat b { display: block; font-size: 28px; letter-spacing: -.03em; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { display: block; font-size: 13.5px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+@media (max-width: 860px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* pipeline strip */
+.flow { display: flex; align-items: stretch; gap: 8px; margin-top: 22px; flex-wrap: wrap; }
+.flow .step { flex: 1 1 150px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13.5px; color: var(--ink-2); position: relative; }
+.flow .step b { display: block; color: var(--ink); font-size: 14px; }
+.flow .step small { font: 500 11px var(--f-mono); color: var(--muted); }
+.flow .arrow { align-self: center; color: var(--muted); font-weight: 700; }
+@media (max-width: 760px) { .flow .arrow { display: none; } }
+
+/* workbench */
+.bench { display: grid; grid-template-columns: 250px minmax(0, 1fr) 360px; gap: 16px; align-items: start; padding-bottom: 36px; }
+@media (max-width: 1100px) { .bench { grid-template-columns: minmax(0, 1fr) 340px; } .list-card { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.tabs { display: flex; gap: 6px; margin: 4px 0 14px; flex-wrap: wrap; }
+.tab { border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 14px; cursor: pointer; color: var(--ink-2); }
+.tab[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.list-card { overflow: hidden; }
+.filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px; border-bottom: 1px solid var(--line); }
+.filters button { border: 0; background: var(--sunk); border-radius: 8px; padding: 4px 9px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); cursor: pointer; }
+.filters button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.doclist { max-height: 640px; overflow: auto; }
+@media (max-width: 1100px) { .doclist { max-height: 220px; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; } }
+.doc { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 8px 12px; cursor: pointer; font-size: 13.5px; }
+.doc:hover { background: var(--paper-2); }
+.doc[aria-current="true"] { background: var(--accent-soft); }
+.doc .id { font: 600 11.5px var(--f-mono); color: var(--muted); flex: none; }
+.doc .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+@media (max-width: 1100px) { .doc { width: auto; border: 1px solid var(--line); border-radius: 8px; } .doc .nm { display: none; } }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dot.auto { background: var(--ok); } .dot.review { background: var(--review); }
+.dot.err { box-shadow: 0 0 0 2px var(--bad); }
+
+.viewer { padding: 14px; min-height: 420px; }
+.viewer-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.viewer-head h3 { margin: 0; font-size: 16px; }
+.toggle { margin-left: auto; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.stage { position: relative; background: var(--sunk); border-radius: 12px; padding: 14px; display: flex; justify-content: center; }
+.paper { position: relative; width: min(100%, 420px); background: var(--receipt); box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.paper img { display: block; width: 100%; height: auto; }
+.paper svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.paper svg rect { fill: none; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.paper svg rect.ocr { stroke: rgba(0,0,0,.18); stroke-width: 1; }
+.paper svg rect.hl { stroke-width: 3.5; }
+.imgnote { font-size: 12.5px; color: var(--muted); margin: 8px 2px 0; }
+
+.fields { padding: 14px; }
+.banner { border-radius: 12px; padding: 11px 13px; font-size: 14px; margin-bottom: 12px; }
+.banner b { display: block; font-size: 15px; }
+.banner.auto { background: var(--ok-soft); color: var(--ok); }
+.banner.review { background: var(--review-soft); color: var(--review); }
+.field { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: var(--paper); cursor: default; }
+.field:hover, .field.hl { border-color: var(--line-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+.field .hd { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.field .hd i { width: 10px; height: 10px; border-radius: 3px; }
+.field .hd .st { margin-left: auto; font: 600 11px var(--f-mono); text-transform: none; letter-spacing: 0; padding: 3px 7px; border-radius: 6px; }
+.st.ok { background: var(--ok-soft); color: var(--ok); } .st.rv { background: var(--review-soft); color: var(--review); }
+.field .hd .tag { font: 600 10.5px var(--f-mono); text-transform: none; letter-spacing: 0; color: var(--accent); background: var(--accent-soft); padding: 2px 6px; border-radius: 5px; }
+.field .val { font-size: 15.5px; font-weight: 700; margin: 6px 0 4px; word-break: break-word; }
+.field .val.none { color: var(--muted); font-weight: 500; font-style: italic; }
+.conf { position: relative; height: 7px; background: var(--sunk); border-radius: 4px; margin: 8px 0 4px; }
+.conf i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--accent); }
+.conf s { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); text-decoration: none; }
+.meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.reason { font-size: 12.5px; color: var(--review); margin-top: 4px; }
+.gold { font-size: 12.5px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); color: var(--ink-2); word-break: break-word; }
+.gold .ok { color: var(--ok); font-weight: 800; } .gold .no { color: var(--bad); font-weight: 800; } .gold .nr { color: var(--review); font-weight: 800; }
+
+.upload { padding: 18px; }
+.drop { border: 2px dashed var(--line-2); border-radius: 14px; padding: 26px; text-align: center; cursor: pointer; background: var(--paper-2); }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.progress { height: 6px; background: var(--sunk); border-radius: 4px; overflow: hidden; margin-top: 12px; }
+.progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.note { font-size: 13px; color: var(--muted); margin: 10px 2px 0; }
+.note.err { color: var(--bad); }
+
+section.band { padding: 54px 0; border-top: 1px solid var(--line); }
+h2 { font-size: clamp(26px, 3.4vw, 36px); letter-spacing: -.03em; margin: 0 0 10px; line-height: 1.1; font-weight: 800; }
+.sub { color: var(--ink-2); max-width: 72ch; margin: 0 0 24px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.panel { padding: 18px; }
+.panel h3 { margin: 0 0 4px; font-size: 16px; }
+.cap { font-size: 13.5px; color: var(--muted); margin: 0 0 14px; }
+.key { display: flex; gap: 14px; font-size: 13px; color: var(--ink-2); margin-bottom: 12px; flex-wrap: wrap; }
+.key i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+.brow { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 12px; align-items: center; margin-bottom: 12px; font-size: 13.5px; }
+.brow .nm { font-weight: 700; }
+.bar { position: relative; height: 11px; background: var(--sunk); border-radius: 4px; margin: 3px 44px 3px 0; }
+.bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; }
+.bar span { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); padding-left: 6px; font: 500 11.5px var(--f-mono); color: var(--ink-2); white-space: nowrap; }
+.bar.ceil i { background: transparent; border: 1.5px dashed var(--line-2); }
+.bar.single i { background: var(--line-2); }
+.bar.multi i { background: var(--accent); }
+table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.t th, table.t td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.t th:first-child, table.t td:first-child { text-align: left; }
+table.t th { font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.big2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
+.bx { border-radius: 12px; padding: 12px 14px; }
+.bx b { display: block; font-size: 30px; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.bx span { font-size: 13px; }
+.bx.bad { background: var(--bad-soft); color: var(--bad); } .bx.good { background: var(--ok-soft); color: var(--ok); }
+.cards3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 900px) { .cards3 { grid-template-columns: minmax(0, 1fr); } }
+.g { padding: 16px 18px; }
+.g h3 { margin: 0 0 6px; font-size: 15.5px; }
+.g p { margin: 0; font-size: 14px; color: var(--ink-2); }
+footer { padding: 28px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; }
+footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+@media (max-width: 520px) { .wrap { padding-inline: 16px; } .big2 { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#123b36"/><path d="M10 7h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z" fill="#f6f1e7"/><path d="M13 12h6M13 15h6M13 18h4" stroke="#123b36" stroke-width="1.5"/></svg>
+      Receipt Intake
+    </a>
+    <nav>
+      <a href="#workbench" class="hide-sm">Try it</a>
+      <a href="#results">Results</a>
+      <a href="#how" class="hide-sm">How it works</a>
+      <a class="keep" href="https://github.com/anshumankumar2021/document-processing-pipeline" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <button class="icon-btn" id="theme" aria-label="Toggle dark mode"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div class="eyebrow">Intelligent document processing · 200 real scanned receipts</div>
+    <h1>Scanned receipts in, clean records out.</h1>
+    <p class="lede">A pipeline that reads real, crumpled, low-resolution receipts: several OCR passes vote on each field, small learned models pick the company, date, address and total, and validation sends anything uncertain to a person instead of the database. Every number below is measured on receipts the models never saw.</p>
+    <div class="stats" id="stats"></div>
+    <div class="flow" aria-label="Pipeline">
+      <div class="step"><b>Upload to S3</b>encrypted, private inbox<br><small>s3:ObjectCreated</small></div><span class="arrow">→</span>
+      <div class="step"><b>4 OCR passes</b>Tesseract 5, two models × two layouts<br><small>Lambda container</small></div><span class="arrow">→</span>
+      <div class="step"><b>Field scorers</b>candidates + OCR voting<br><small>logistic regression</small></div><span class="arrow">→</span>
+      <div class="step"><b>Validation</b>schema rules + learned thresholds<br><small>95% precision target</small></div><span class="arrow">→</span>
+      <div class="step"><b>DynamoDB</b>or <b style="display:inline">review queue</b><br><small>SQS, idempotent writes</small></div>
+    </div>
+  </div>
+
+  <div class="wrap" id="workbench">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="test">Browse 200 test receipts</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="upload">Upload your own</button>
+    </div>
+    <div class="bench" id="bench">
+      <div class="card list-card" id="listcard">
+        <div class="filters" id="filters">
+          <button data-f="all" aria-pressed="true">All</button>
+          <button data-f="auto" aria-pressed="false">Auto-accepted</button>
+          <button data-f="review" aria-pressed="false">To review</button>
+          <button data-f="err" aria-pressed="false">Has errors</button>
+        </div>
+        <div class="doclist" id="doclist"></div>
+      </div>
+      <div class="card viewer">
+        <div class="viewer-head"><h3 id="vtitle">Receipt</h3><label class="toggle"><input type="checkbox" id="showocr"> show every OCR line</label></div>
+        <div class="stage"><div class="paper" id="paper"></div></div>
+        <p class="imgnote" id="imgnote"></p>
+        <div class="upload" id="uploadbox" hidden>
+          <label class="drop" id="drop" tabindex="0">
+            <input type="file" id="file" accept="image/*" hidden>
+            <b>Drop a receipt photo or scan</b>
+            <p>OCR runs in your browser with Tesseract.js; only the recognised words are sent to the extractor. Nothing is stored.</p>
+          </label>
+          <div class="progress" hidden id="prog"><i></i></div>
+          <p class="note" id="unote">Works best on a flat, well-lit receipt, similar to the SROIE scans (Malaysian shops).</p>
+        </div>
+      </div>
+      <div class="card fields" id="fields"></div>
+    </div>
+  </div>
+
+  <section class="band" id="results">
+    <div class="wrap">
+      <h2>Results</h2>
+      <p class="sub" id="rsub">Trained on 426 receipts, tested on 200 others. A field counts as right only if it matches the label exactly (amounts and dates by value; company and address as text after upper-casing and collapsing spaces).</p>
+      <div id="rbody"></div>
+    </div>
+  </section>
+
+  <section class="band" id="how">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="sub">The expensive part of document processing isn't reading text; it's knowing when the reading is wrong. So the pipeline is built around calibrated confidence and a review queue.</p>
+      <div class="cards3">
+        <div class="card g"><h3>OCR voting</h3><p>Each receipt is read four times (Tesseract's standard and "best" models, each with two page-layout modes). They make different mistakes, so every candidate carries how many passes agree with it.</p></div>
+        <div class="card g"><h3>Candidates, not guesses</h3><p>Dates and amounts come from patterns; company and address from lines near the top. A logistic regression per field ranks candidates on position, keywords, font size, agreement and OCR confidence.</p></div>
+        <div class="card g"><h3>Calibrated review</h3><p>Five-fold cross-validation on the training receipts sets each field's threshold: the lowest confidence at which accepted values were at least 95% right. Below it, or failing a schema rule, the field goes to a person.</p></div>
+        <div class="card g"><h3>Serverless on AWS</h3><p>An AWS SAM template: an encrypted private S3 inbox triggers a container Lambda (Tesseract + the models). Results go to DynamoDB with conditional writes, uncertain ones to an SQS review queue.</p></div>
+        <div class="card g"><h3>Least privilege</h3><p>The function can read only <span class="mono">inbox/*</span>, write one table and send to one queue. TLS-only bucket policy, KMS encryption, no public access, non-root container, dead-letter queue and CloudWatch alarms.</p></div>
+        <div class="card g"><h3>Reproducible</h3><p>CI downloads the dataset, retrains, re-scores the test set and fails if the published numbers drift; the Lambda image is built and run on a real receipt; the handler is tested end to end against mocked S3, DynamoDB and SQS.</p></div>
+      </div>
+      <p class="sub" style="margin-top:22px">Data: the <a href="https://github.com/zzzDavid/ICDAR-2019-SROIE" target="_blank" rel="noopener">SROIE 2019</a> receipts (ICDAR competition, corrected labels). Images on this page load from that repository.</p>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap"><span>Built by Anshuman Kumar · Python, Tesseract, AWS SAM (Lambda, S3, DynamoDB, SQS) · Vercel</span><a href="https://github.com/anshumankumar2021/document-processing-pipeline" target="_blank" rel="noopener">Source and methodology on GitHub</a></div></footer>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" defer></script>
+<script>
+(() => {
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const IMG = id => `https://raw.githubusercontent.com/zzzDavid/ICDAR-2019-SROIE/27be4271b251c256f695acbade9a801bffe85994/data/img/${id}.jpg`;
+  const FIELDS = [["company", "Company"], ["date", "Date"], ["address", "Address"], ["total", "Total"]];
+  const COLOR = f => `var(--f-${f})`;
+  const root = document.documentElement;
+  try { const t = localStorage.getItem("theme"); if (t) root.dataset.theme = t; } catch (e) {}
+  $("#theme").onclick = () => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {}
+  };
+
+  let META = null, DOCS = [], FILTER = "all", CUR = null, CURDATA = null, UPLOAD = null;
+
+  function stats() {
+    const m = META.results.modes.multi, s = META.results.modes.single, r = m.routing;
+    const cells = [
+      [`${m.accuracy.total}%`, `of totals exactly right on unseen receipts (dates ${m.accuracy.date}%, known vendors' names ${m.by_vendor.known_vendor.company}%)`],
+      [`${r.auto_accepted_precision}%`, `of auto-accepted fields are correct; ${r.fields_auto_accepted}% of fields need no person`],
+      [`${r.error_reduction}%`, `fewer wrong values reach the database than with no validation step`],
+      [`+${(m.accuracy.total - s.accuracy.total).toFixed(1)} pts`, `total accuracy from four-pass OCR voting over a single OCR pass`],
+    ];
+    $("#stats").innerHTML = cells.map(([b, t]) => `<div class="stat"><b>${esc(b)}</b><span>${esc(t)}</span></div>`).join("");
+  }
+
+  /* ---------- list ---------- */
+  function renderList() {
+    const hasErr = d => Object.values(d.ok).some(v => !v);
+    const list = DOCS.filter(d => FILTER === "all" || (FILTER === "err" ? hasErr(d) : d.route === FILTER));
+    $("#doclist").innerHTML = list.map(d => `<button class="doc" data-id="${d.id}" aria-current="${d.id === CUR}"><span class="dot ${d.route}${hasErr(d) ? " err" : ""}" title="${d.route === "auto" ? "auto-accepted" : "sent to review"}${hasErr(d) ? ", has a wrong field" : ""}"></span><span class="id">#${d.id}</span><span class="nm">${esc(d.company || "")}</span></button>`).join("") || `<p class="note" style="padding:10px">No receipts match.</p>`;
+  }
+  $("#filters").onclick = e => {
+    const b = e.target.closest("button"); if (!b) return;
+    FILTER = b.dataset.f;
+    document.querySelectorAll("#filters button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    renderList();
+  };
+  $("#doclist").onclick = e => { const b = e.target.closest(".doc"); if (b) openDoc(b.dataset.id); };
+
+  async function openDoc(id) {
+    CUR = id; renderList();
+    $("#fields").innerHTML = `<p class="note">Loading…</p>`;
+    const d = await fetch(`/api/extract?id=${encodeURIComponent(id)}`).then(r => r.json());
+    if (CUR !== id) return;
+    CURDATA = d;
+    $("#vtitle").textContent = `Receipt #${id}`;
+    drawReceipt(IMG(id), d.size, d);
+    $("#imgnote").textContent = `OCR took ${(d.ocr_ms / 1000).toFixed(1)} s for four passes on one CPU core. Image: SROIE 2019.`;
+    renderFields(d, true);
+  }
+
+  /* ---------- receipt + overlay ---------- */
+  function drawReceipt(src, size, d) {
+    const [w, h] = size;
+    const showOcr = $("#showocr").checked;
+    const ocr = showOcr ? (d.lines || []).map(l => `<rect class="ocr" x="${l.box[0]}" y="${l.box[1]}" width="${l.box[2] - l.box[0]}" height="${l.box[3] - l.box[1]}"/>`).join("") : "";
+    const boxes = FIELDS.map(([f]) => {
+      const b = d.fields[f]?.box; if (!b) return "";
+      return `<rect data-f="${f}" x="${b[0] - 3}" y="${b[1] - 3}" width="${b[2] - b[0] + 6}" height="${b[3] - b[1] + 6}" rx="3" style="stroke:${COLOR(f)}"/>`;
+    }).join("");
+    $("#paper").innerHTML = `<img src="${esc(src)}" alt="Scanned receipt" width="${w}" height="${h}"><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${ocr}${boxes}</svg>`;
+  }
+  $("#showocr").onchange = () => { if (UPLOAD && !$("#uploadbox").hidden) drawReceipt(UPLOAD.url, UPLOAD.size, UPLOAD.res); else if (CURDATA) drawReceipt(IMG(CUR), CURDATA.size, CURDATA); };
+
+  function renderFields(d, withGold) {
+    const th = (META.results.thresholds[d.mode || "multi"] || {});
+    const auto = d.route === "auto";
+    const reasons = d.review_fields.map(f => `${f}: ${d.checks[f].reasons.join(", ")}`).join("; ");
+    let html = `<div class="banner ${auto ? "auto" : "review"}"><b>${auto ? "Auto-accepted → written to the database" : "Sent to human review"}</b>${auto ? "Every field passed its rules and cleared its confidence threshold." : esc(reasons)}</div>`;
+    for (const [f, label] of FIELDS) {
+      const x = d.fields[f] || {}, c = d.checks[f] || { ok: false, reasons: [] };
+      const conf = Math.max(0, Math.min(1, x.conf || 0)), t = th[f] ?? 1;
+      let val = x.value;
+      if (f === "total" && val) val = Number(val).toFixed(2);
+      let gold = "";
+      if (withGold && d.gold) {
+        const ok = d.ok[f], near = d.near?.[f];
+        gold = `<div class="gold">Label: ${esc(d.gold[f] || "(none)")} · ${ok ? '<span class="ok">✓ exact</span>' : near ? '<span class="nr">≈ near match</span>' : '<span class="no">✕ wrong</span>'}</div>`;
+      }
+      const tag = (f === "company" && x.known_vendor) ? '<span class="tag">known vendor</span>' : (f === "address" && x.from_vendor_book) ? '<span class="tag">from vendor book</span>' : "";
+      html += `<div class="field" data-f="${f}"><div class="hd"><i style="background:${COLOR(f)}"></i>${label}${tag}<span class="st ${c.ok ? "ok" : "rv"}">${c.ok ? "accepted" : "review"}</span></div>
+        <div class="val ${val ? "" : "none"}">${val ? esc(val) : "not found"}</div>
+        <div class="conf" title="confidence ${conf.toFixed(2)}, threshold ${t > 1 ? "never auto-accept" : t.toFixed(2)}"><i style="width:${conf * 100}%;background:${c.ok ? "var(--accent)" : "var(--review)"}"></i>${t <= 1 ? `<s style="left:${t * 100}%"></s>` : ""}</div>
+        <div class="meta"><span>confidence ${conf.toFixed(2)}</span><span>${t > 1 ? "always reviewed" : `needs ≥ ${t.toFixed(2)}`}</span></div>
+        ${c.ok ? "" : `<div class="reason">${esc(c.reasons.join(", "))}</div>`}
+        ${x.alternatives?.length ? `<div class="meta" style="margin-top:4px"><span>runner-up: ${esc(f === "total" ? Number(x.alternatives[0].value).toFixed(2) : x.alternatives[0].value)} (${x.alternatives[0].conf.toFixed(2)})</span></div>` : ""}
+        ${gold}</div>`;
+    }
+    $("#fields").innerHTML = html;
+  }
+  $("#fields").addEventListener("mouseover", e => {
+    const f = e.target.closest(".field")?.dataset.f;
+    document.querySelectorAll("#paper rect[data-f]").forEach(r => r.classList.toggle("hl", r.dataset.f === f));
+  });
+
+  /* ---------- tabs ---------- */
+  document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+    document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", x === t));
+    const up = t.dataset.tab === "upload";
+    $("#listcard").hidden = up; $("#uploadbox").hidden = !up;
+    $("#bench").style.gridTemplateColumns = up ? "" : "";
+    if (up) {
+      $("#vtitle").textContent = "Your receipt";
+      if (UPLOAD) { drawReceipt(UPLOAD.url, UPLOAD.size, UPLOAD.res); renderFields(UPLOAD.res, false); }
+      else { $("#paper").innerHTML = ""; $("#imgnote").textContent = ""; $("#fields").innerHTML = `<p class="note">Extracted fields will appear here.</p>`; }
+    } else if (CUR) openDoc(CUR);
+  });
+
+  /* ---------- upload (Tesseract.js in the browser) ---------- */
+  const drop = $("#drop");
+  drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#file").click(); } };
+  ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) runUpload(f); });
+  $("#file").onchange = e => { const f = e.target.files[0]; if (f) runUpload(f); };
+
+  async function runUpload(file) {
+    const note = $("#unote"), prog = $("#prog"), bar = prog.querySelector("i");
+    if (!window.Tesseract) { note.textContent = "The OCR library is still loading. Try again in a moment."; note.className = "note err"; return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image(); img.src = url; await img.decode();
+    const size = [img.naturalWidth, img.naturalHeight];
+    $("#paper").innerHTML = `<img src="${url}" alt="Your receipt">`;
+    prog.hidden = false; bar.style.width = "0%"; note.className = "note"; note.textContent = "Loading the OCR engine…";
+    $("#fields").innerHTML = `<p class="note">Reading the receipt…</p>`;
+    try {
+      const worker = await Tesseract.createWorker("eng", 1, { logger: m => { if (m.status === "recognizing text") { bar.style.width = `${Math.round(m.progress * 100)}%`; note.textContent = `Reading text… ${Math.round(m.progress * 100)}%`; } } });
+      await worker.setParameters({ tessedit_pageseg_mode: "6" });
+      const t0 = performance.now();
+      const { data } = await worker.recognize(img, {}, { blocks: true });
+      const ms = Math.round(performance.now() - t0);
+      await worker.terminate();
+      const words = [];
+      (data.blocks || []).forEach((b, bi) => b.paragraphs.forEach((p, pi) => p.lines.forEach((l, li) => l.words.forEach(w => {
+        if (w.text.trim()) words.push({ t: w.text, x: w.bbox.x0, y: w.bbox.y0, w: w.bbox.x1 - w.bbox.x0, h: w.bbox.y1 - w.bbox.y0, c: w.confidence, line: [bi + 1, pi + 1, li + 1] });
+      }))));
+      note.textContent = `Read ${words.length} words in ${(ms / 1000).toFixed(1)} s. Extracting fields…`;
+      const r = await fetch("/api/extract", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ width: size[0], height: size[1], ms, words }) });
+      const res = await r.json();
+      if (!r.ok) throw new Error(res.error || `HTTP ${r.status}`);
+      UPLOAD = { url, size, res };
+      drawReceipt(url, size, res);
+      renderFields(res, false);
+      note.textContent = `Single OCR pass in the browser (${(ms / 1000).toFixed(1)} s), so the single-pass models were used. The AWS pipeline runs four passes.`;
+    } catch (err) {
+      note.className = "note err"; note.textContent = `Couldn't process this image: ${err.message}`;
+      $("#fields").innerHTML = "";
+    } finally { prog.hidden = true; }
+  }
+
+  /* ---------- results ---------- */
+  function renderResults() {
+    const R = META.results, m = R.modes.multi, s = R.modes.single, r = m.routing;
+    $("#rsub").textContent = `Trained on ${R.n_train} receipts, tested on ${R.n_test} others. A field counts as right only if it matches the label exactly: amounts and dates by value, company and address as text after upper-casing and collapsing spaces.`;
+    const rows = FIELDS.map(([f, label]) => `<div class="brow"><div class="nm">${label}</div><div>
+      <div class="bar ceil" title="OCR ceiling"><i style="width:${m.ocr_ceiling[f]}%"></i><span>${m.ocr_ceiling[f]}%</span></div>
+      <div class="bar single"><i style="width:${s.accuracy[f]}%"></i><span>${s.accuracy[f]}%</span></div>
+      <div class="bar multi"><i style="width:${m.accuracy[f]}%"></i><span>${m.accuracy[f]}%</span></div></div></div>`).join("");
+    const pf = r.per_field;
+    const ftab = FIELDS.map(([f, label]) => `<tr><td>${label}</td><td>${m.accuracy[f]}%</td><td>${f in m.near_match ? m.near_match[f] + "%" : "–"}</td><td>${pf[f].auto_rate}%</td><td>${pf[f].auto_precision ?? "–"}${pf[f].auto_precision != null ? "%" : ""}</td><td>${pf[f].wrong_caught}/${pf[f].wrong_total}</td></tr>`).join("");
+    $("#rbody").innerHTML = `
+      <div class="grid2">
+        <div class="card panel">
+          <h3>Field accuracy on 200 unseen receipts</h3>
+          <p class="cap">The dashed bar is the OCR ceiling: how often any OCR pass produced the right value at all. The extractor can't beat it.</p>
+          <div class="key"><span><i style="border:1.5px dashed var(--line-2)"></i>OCR ceiling</span><span><i style="background:var(--line-2)"></i>1 OCR pass</span><span><i style="background:var(--accent)"></i>4 passes + voting</span></div>
+          ${rows}
+        </div>
+        <div class="card panel">
+          <h3>What the review queue buys</h3>
+          <p class="cap">Wrong field values written to the database across the 200 test receipts. Fields sent to review are assumed fixed by the reviewer.</p>
+          <div class="big2"><div class="bx bad"><b>${r.wrong_fields_without_review}</b><span>wrong values if everything were auto-accepted</span></div>
+          <div class="bx good"><b>${r.wrong_fields_written_with_review}</b><span>wrong values with validation and review (−${r.error_reduction}%)</span></div></div>
+          <p class="cap" style="margin:0">${r.fields_auto_accepted}% of fields and ${r.docs_straight_through}% of receipts go straight through; auto-accepted fields are ${r.auto_accepted_precision}% correct.</p>
+        </div>
+      </div>
+      <div class="card panel" style="margin-top:16px;overflow-x:auto">
+        <h3>Per field (4-pass pipeline)</h3>
+        <p class="cap">Near match tolerates a character or two of OCR noise. "Caught" = wrong values that validation sent to review instead of the database.</p>
+        <table class="t"><thead><tr><th>Field</th><th>Exact</th><th>Near</th><th>Auto-accepted</th><th>Auto precision</th><th>Wrong caught</th></tr></thead><tbody>${ftab}</tbody></table>
+        <p class="cap" style="margin:12px 0 0">${m.by_vendor.known_vendor.n} test receipts come from a vendor seen in training (company ${m.by_vendor.known_vendor.company}%, address ${m.by_vendor.known_vendor.address}% exact) and ${m.by_vendor.new_vendor.n} from new vendors (company ${m.by_vendor.new_vendor.company}%, address ${m.by_vendor.new_vendor.address}%), whose names come straight from OCR.</p>
+        <p class="cap" style="margin:8px 0 0">OCR p50 ${(m.latency_ms.ocr_p50 / 1000).toFixed(1)} s for four passes on one core (p95 ${(m.latency_ms.ocr_p95 / 1000).toFixed(1)} s); extraction and validation p50 ${m.latency_ms.extract_p50} ms.</p>
+      </div>`;
+  }
+
+  fetch("/api/extract?meta=1").then(r => r.json()).then(m => {
+    META = m; DOCS = m.docs;
+    stats(); renderList(); renderResults();
+    const first = DOCS.find(d => d.route === "auto") || DOCS[0];
+    if (first) openDoc(first.id);
+  }).catch(() => { $("#fields").innerHTML = `<p class="note err">Couldn't load results.</p>`; });
+})();
+</script>
+</body>
+</html>
