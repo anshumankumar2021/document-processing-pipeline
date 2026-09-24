@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "public",
+  "functions": {
+    "api/extract.py": {
+      "includeFiles": "{idp,models,results}/**",
+      "maxDuration": 10
+    }
+  }
+}

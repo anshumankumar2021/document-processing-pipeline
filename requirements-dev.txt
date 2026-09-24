@@ -1,0 +1,9 @@
+numpy==2.4.4
+scikit-learn==1.8.0
+rapidfuzz==3.14.6
+pillow==12.2.0
+pytesseract==0.3.13
+boto3==1.43.101
+moto[s3,dynamodb,sqs]==5.2.3
+cfn-lint==1.57.0
+pytest==9.1.1

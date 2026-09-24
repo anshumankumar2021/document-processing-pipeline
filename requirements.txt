@@ -1,0 +1,3 @@
+# Runtime for the serverless demo (api/extract.py): the models themselves need only the standard library,
+# vendor matching uses rapidfuzz. Training and evaluation: requirements-dev.txt. Lambda image: aws/requirements.txt.
+rapidfuzz==3.14.6

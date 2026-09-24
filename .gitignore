@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+*.pyc
+.vercel
+.aws-sam/
+data/sroie
+data/tessdata
+data/ocr/
