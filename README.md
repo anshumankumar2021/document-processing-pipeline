@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/anshumankumar2021/document-processing-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/anshumankumar2021/document-processing-pipeline/actions/workflows/ci.yml)
 
-**Live demo: [document-processing-pipeline.vercel.app](https://document-processing-pipeline.vercel.app)**
+**Live demo: [document-processing-pipeline-theta.vercel.app](https://document-processing-pipeline-theta.vercel.app)**
 
 A pipeline that turns real scanned receipts into structured records (company, date, address, total) and sends
 anything it isn't sure about to a person instead of the database. It is built around one question: *when is
@@ -115,7 +115,7 @@ CI (below) builds this image and processes a real receipt inside it. The handler
 
 ## Live demo
 
-The [demo](https://document-processing-pipeline.vercel.app) has two tabs:
+The [demo](https://document-processing-pipeline-theta.vercel.app) has two tabs:
 - **Browse**: all 200 test receipts, each showing the image, boxes around the extracted fields, confidence
   against the review threshold, the routing decision with reasons, and the label.
 - **Upload your own**: runs Tesseract.js in the browser (the same engine compiled to WebAssembly). Only the
