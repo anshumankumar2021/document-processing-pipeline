@@ -9,6 +9,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+      - name: Tesseract's tessdata_best English model (used by two of the four OCR passes)
+        run: mkdir -p data/tessdata && curl -sSfL -o data/tessdata/eng.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/main/eng.traineddata
       - run: pip install -r requirements-dev.txt
       - run: cfn-lint aws/template.yaml
       - run: pytest -q
