@@ -409,7 +409,9 @@ footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; justify-content: space
     const note = $("#unote"), prog = $("#prog"), bar = prog.querySelector("i");
     if (!window.Tesseract) { note.textContent = "The OCR library is still loading. Try again in a moment."; note.className = "note err"; return; }
     const url = URL.createObjectURL(file);
-    const img = new Image(); img.src = url; await img.decode();
+    const img = new Image();
+    try { await new Promise((ok, fail) => { img.onload = ok; img.onerror = () => fail(new Error("not an image the browser can open")); img.src = url; }); }
+    catch (err) { note.className = "note err"; note.textContent = err.message; return; }
     const size = [img.naturalWidth, img.naturalHeight];
     $("#paper").innerHTML = `<img src="${url}" alt="Your receipt">`;
     prog.hidden = false; bar.style.width = "0%"; note.className = "note"; note.textContent = "Loading the OCR engine…";
