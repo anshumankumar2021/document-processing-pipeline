@@ -38,7 +38,8 @@ def test_inference_needs_no_numpy_or_sklearn():
     assert out.returncode == 0, out.stderr
 
 
-@pytest.mark.skipif(not os.path.exists("/usr/bin/tesseract"), reason="needs the tesseract binary")
+@pytest.mark.skipif(not os.path.exists("/usr/bin/tesseract") or not (ROOT / "data" / "tessdata" / "eng.traineddata").exists(),
+                    reason="needs the tesseract binary and tessdata_best (python -m scripts.prepare_data)")
 def test_real_ocr_on_a_rendered_receipt():
     from PIL import Image, ImageDraw, ImageFont
     from idp.pipeline import process_image
