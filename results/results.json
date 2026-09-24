@@ -1,0 +1,195 @@
+{
+  "dataset": "SROIE 2019 (ICDAR) scanned receipts",
+  "n_train": 426,
+  "n_test": 200,
+  "ocr": "Tesseract 5, passes fast6, best6, fast4, best4",
+  "target_precision": 0.95,
+  "thresholds": {
+    "multi": {
+      "company": 0.957,
+      "date": 0.7721,
+      "address": 0.8976,
+      "total": 0.7992
+    },
+    "single": {
+      "company": 0.8742,
+      "date": 0.9326,
+      "address": 0.9887,
+      "total": 0.814
+    }
+  },
+  "cv_accuracy": {
+    "multi": {
+      "company": 0.7277,
+      "date": 0.8568,
+      "address": 0.5094,
+      "total": 0.8357
+    },
+    "single": {
+      "company": 0.6784,
+      "date": 0.7817,
+      "address": 0.4953,
+      "total": 0.7793
+    }
+  },
+  "modes": {
+    "multi": {
+      "n_docs": 200,
+      "accuracy": {
+        "company": 72.5,
+        "date": 87.0,
+        "address": 47.5,
+        "total": 85.5
+      },
+      "near_match": {
+        "company": 81.0,
+        "address": 80.0
+      },
+      "all_fields_correct": 35.0,
+      "by_vendor": {
+        "known_vendor": {
+          "n": 126,
+          "company": 92.9,
+          "date": 88.9,
+          "address": 59.5,
+          "total": 88.1,
+          "docs_straight_through": 16.7
+        },
+        "new_vendor": {
+          "n": 74,
+          "company": 37.8,
+          "date": 83.8,
+          "address": 27.0,
+          "total": 81.1,
+          "docs_straight_through": 0.0
+        }
+      },
+      "ocr_ceiling": {
+        "company": 55.5,
+        "date": 92.5,
+        "address": 42.0,
+        "total": 93.0
+      },
+      "routing": {
+        "fields_auto_accepted": 55.2,
+        "auto_accepted_precision": 95.0,
+        "docs_straight_through": 10.5,
+        "straight_through_docs_all_correct": 90.5,
+        "wrong_fields_without_review": 215,
+        "wrong_fields_written_with_review": 22,
+        "error_reduction": 89.8,
+        "per_field": {
+          "company": {
+            "auto_rate": 50.0,
+            "auto_precision": 94.0,
+            "wrong_caught": 49,
+            "wrong_total": 55
+          },
+          "date": {
+            "auto_rate": 80.0,
+            "auto_precision": 95.6,
+            "wrong_caught": 19,
+            "wrong_total": 26
+          },
+          "address": {
+            "auto_rate": 15.0,
+            "auto_precision": 93.3,
+            "wrong_caught": 103,
+            "wrong_total": 105
+          },
+          "total": {
+            "auto_rate": 76.0,
+            "auto_precision": 95.4,
+            "wrong_caught": 22,
+            "wrong_total": 29
+          }
+        }
+      },
+      "latency_ms": {
+        "ocr_p50": 4083,
+        "ocr_p95": 9660,
+        "extract_p50": 33.3,
+        "extract_p95": 44.6
+      }
+    },
+    "single": {
+      "n_docs": 200,
+      "accuracy": {
+        "company": 67.0,
+        "date": 80.5,
+        "address": 48.0,
+        "total": 78.5
+      },
+      "near_match": {
+        "company": 75.0,
+        "address": 76.0
+      },
+      "all_fields_correct": 32.5,
+      "by_vendor": {
+        "known_vendor": {
+          "n": 126,
+          "company": 90.5,
+          "date": 82.5,
+          "address": 61.9,
+          "total": 81.7,
+          "docs_straight_through": 0.0
+        },
+        "new_vendor": {
+          "n": 74,
+          "company": 27.0,
+          "date": 77.0,
+          "address": 24.3,
+          "total": 73.0,
+          "docs_straight_through": 0.0
+        }
+      },
+      "ocr_ceiling": {
+        "company": 38.5,
+        "date": 83.0,
+        "address": 28.0,
+        "total": 87.5
+      },
+      "routing": {
+        "fields_auto_accepted": 37.1,
+        "auto_accepted_precision": 95.6,
+        "docs_straight_through": 0.0,
+        "straight_through_docs_all_correct": null,
+        "wrong_fields_without_review": 252,
+        "wrong_fields_written_with_review": 13,
+        "error_reduction": 94.8,
+        "per_field": {
+          "company": {
+            "auto_rate": 49.0,
+            "auto_precision": 94.9,
+            "wrong_caught": 61,
+            "wrong_total": 66
+          },
+          "date": {
+            "auto_rate": 39.5,
+            "auto_precision": 94.9,
+            "wrong_caught": 35,
+            "wrong_total": 39
+          },
+          "address": {
+            "auto_rate": 0.0,
+            "auto_precision": null,
+            "wrong_caught": 104,
+            "wrong_total": 104
+          },
+          "total": {
+            "auto_rate": 60.0,
+            "auto_precision": 96.7,
+            "wrong_caught": 39,
+            "wrong_total": 43
+          }
+        }
+      },
+      "latency_ms": {
+        "ocr_p50": 631,
+        "ocr_p95": 1770,
+        "extract_p50": 10.7,
+        "extract_p95": 13.4
+      }
+    }
+  }
+}
