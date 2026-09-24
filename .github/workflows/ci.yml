@@ -1,0 +1,62 @@
+name: ci
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+      - run: pip install -r requirements-dev.txt
+      - run: cfn-lint aws/template.yaml
+      - run: pytest -q
+
+  reproduce:
+    # Rebuild from the raw dataset: re-run OCR on a sample and check it matches the cache, then retrain and
+    # re-score from the cached OCR and fail if any published number changes.
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+      - run: pip install -r requirements-dev.txt
+      - run: python -m scripts.prepare_data
+      - run: python -m scripts.run_ocr --check 25
+      - run: python -m scripts.train
+      - run: python -m scripts.evaluate
+      - name: Published results must reproduce
+        run: |
+          python - <<'EOF'
+          import json, subprocess
+          new = json.load(open("results/results.json"))
+          old = json.loads(subprocess.check_output(["git", "show", "HEAD:results/results.json"]))
+          for mode in ("multi", "single"):
+              a, b = new["modes"][mode], old["modes"][mode]
+              for f, v in b["accuracy"].items():
+                  print(f"{mode:6s} {f:8s} published {v:5.1f}  reproduced {a['accuracy'][f]:5.1f}")
+                  assert abs(a["accuracy"][f] - v) <= 0.5, f"{mode} {f} accuracy drifted"
+              for k in ("fields_auto_accepted", "auto_accepted_precision", "error_reduction"):
+                  assert abs(a["routing"][k] - b["routing"][k]) <= 1.0, f"{mode} {k} drifted"
+          print("published results reproduce")
+          EOF
+
+  lambda-image:
+    # Build the Lambda container and process a real receipt inside it.
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f aws/Dockerfile -t idp-lambda .
+      - run: curl -sSfL -o receipt.jpg https://raw.githubusercontent.com/zzzDavid/ICDAR-2019-SROIE/27be4271b251c256f695acbade9a801bffe85994/data/img/000.jpg
+      - name: Run the pipeline inside the image
+        run: |
+          docker run --rm -v "$PWD/receipt.jpg:/tmp/receipt.jpg:ro" --entrypoint python idp-lambda -c "
+          from PIL import Image; from idp.pipeline import process_image
+          r = process_image(Image.open('/tmp/receipt.jpg'))
+          print({k: v['value'] for k, v in r['fields'].items()}, r['route'], r['ocr_ms'], 'ms OCR')
+          assert r['fields']['total']['value'] == '9.00' and r['fields']['date']['value'] == '2018-12-25'
+          assert r['mode'] == 'multi' and len(r['passes']) == 4"
