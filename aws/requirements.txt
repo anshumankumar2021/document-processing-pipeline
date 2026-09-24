@@ -1,0 +1,5 @@
+boto3==1.43.101
+pillow==12.2.0
+pytesseract==0.3.13
+rapidfuzz==3.14.6
+awslambdaric==4.0.4

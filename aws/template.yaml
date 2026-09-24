@@ -1,0 +1,169 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Intelligent document processing: receipts uploaded to S3 are OCR'd and extracted by a container Lambda,
+  results go to DynamoDB, and anything that fails validation goes to a human-review queue.
+  Deploy with: sam build && sam deploy --guided   (see README)
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 2048
+    Architectures: [x86_64]
+    Tracing: Active
+
+Resources:
+  # ---------- storage (private, encrypted) ----------
+  InboxBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "idp-inbox-${AWS::AccountId}-${AWS::Region}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: aws:kms}
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      VersioningConfiguration: {Status: Enabled}
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-processed-images
+            Status: Enabled
+            ExpirationInDays: 90
+            NoncurrentVersionExpiration: {NoncurrentDays: 7}
+
+  InboxBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref InboxBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::idp-inbox-${AWS::AccountId}-${AWS::Region}"
+              - !Sub "arn:aws:s3:::idp-inbox-${AWS::AccountId}-${AWS::Region}/*"
+            Condition: {Bool: {"aws:SecureTransport": "false"}}
+
+  ResultsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: doc_id, AttributeType: S}]
+      KeySchema: [{AttributeName: doc_id, KeyType: HASH}]
+      SSESpecification: {SSEEnabled: true}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+
+  ReviewQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600   # 14 days for a person to pick it up
+
+  FailedEventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+
+  # ---------- processing ----------
+  ProcessFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ReservedConcurrentExecutions: 20   # caps spend and protects DynamoDB/SQS from bursts
+      Environment:
+        Variables:
+          RESULTS_TABLE: !Ref ResultsTable
+          REVIEW_QUEUE_URL: !Ref ReviewQueue
+      DeadLetterQueue:                   # S3 invokes asynchronously; events that fail every retry land here
+        Type: SQS
+        TargetArn: !GetAtt FailedEventsQueue.Arn
+      Events:
+        Upload:
+          Type: S3
+          Properties:
+            Bucket: !Ref InboxBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key: {Rules: [{Name: prefix, Value: inbox/}]}
+      # least privilege: read only the inbox prefix, write one table, send to one queue
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [s3:GetObject]
+              Resource: !Sub "arn:aws:s3:::idp-inbox-${AWS::AccountId}-${AWS::Region}/inbox/*"
+            - Effect: Allow
+              Action: [kms:Decrypt]
+              Resource: "*"
+              Condition:
+                StringEquals: {"kms:ViaService": !Sub "s3.${AWS::Region}.amazonaws.com"}
+            - Effect: Allow
+              Action: [dynamodb:PutItem]
+              Resource: !GetAtt ResultsTable.Arn
+            - Effect: Allow
+              Action: [sqs:SendMessage]
+              Resource: [!GetAtt ReviewQueue.Arn, !GetAtt FailedEventsQueue.Arn]
+    Metadata:
+      DockerContext: ..
+      Dockerfile: aws/Dockerfile
+      DockerTag: v1
+
+  # ---------- monitoring ----------
+  FunctionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Document processing is failing
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{Name: FunctionName, Value: !Ref ProcessFunction}]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  FailedEventsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Documents gave up after retries (see FailedEventsQueue)
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{Name: QueueName, Value: !GetAtt FailedEventsQueue.QueueName}]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ReviewBacklogAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Human-review queue is backing up
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions: [{Name: QueueName, Value: !GetAtt ReviewQueue.QueueName}]
+      Statistic: Maximum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 86400
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  InboxBucketName:
+    Description: Upload receipts to s3://<this bucket>/inbox/
+    Value: !Ref InboxBucket
+  ResultsTableName:
+    Value: !Ref ResultsTable
+  ReviewQueueUrl:
+    Value: !Ref ReviewQueue
